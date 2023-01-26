@@ -1,73 +1,62 @@
-#include <Arduino.h>
+
+#include <SPI.h>
+#include <Ethernet.h>
+#include <Wire.h>
+#include <Tasks.h>
 #include <Arduino_FreeRTOS.h>
 
-void Task1( void *pvParameters );
+void WaitforClient( void *pvParameters);
+//The code is divided into two parts, 
+//the first part is the code that handles the temperature sensor 
+//the second part is the code that handles the web server.
 
-void Task2( void *pvParameters );
+byte mac[] = {
+  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE
+};
 
-void Task3( void *pvParameters );
+IPAddress ip(192,168,0,238);
+
+EthernetServer server(80);
 
 void setup() {
 
-  // initialize serial communication at 9600 bits per second:
-  pinMode(8, OUTPUT);
-  pinMode(2, INPUT);
-  Serial.begin(9600);  
-  xTaskCreate(Task3,"task3",128,NULL,1,NULL);
+  Serial.begin(9600);
+  while (!Serial) {};
+  Serial.println("Ethernet WebServer Example");
+  pinMode(2, OUTPUT);
 
-vTaskStartScheduler();
+  Ethernet.begin(mac,ip);
 
-}
-
-// Har ikke bruge for loopen
-void loop()
-{
-
-}
-// Function 2 blinks the LED on pin 8 with a delay of 500ms.
-void Task2(void *pvParameters)  {
-
-    Serial.println("Task2");
-
-    digitalWrite(8, HIGH);   
-
-    vTaskDelay( 500 / portTICK_PERIOD_MS ); 
-
-    digitalWrite(8, LOW);    
-
-    vTaskDelay( 500 / portTICK_PERIOD_MS ); 
-
-}
-
-// Function 1 blinks the LED on pin 8 with a delay of 333ms and 777ms.
-void Task1(void *pvParameters)  
-
-{
-      Serial.println("Task1");
-       digitalWrite(8, HIGH);
-        vTaskDelay( 333 / portTICK_PERIOD_MS ); 
-        // Turn off the LED and delay for 777ms
-        digitalWrite(8, LOW);
-        vTaskDelay( 777 / portTICK_PERIOD_MS ); 
-
-}
-
-//Function 3 creates a task that checks if the button is pressed. 
-//If the button is pressed, it creates a task that runs Function 1. 
-//If the button is not pressed, it creates a task that runs Function 2.
-
-void Task3(void *pvParameters)  {
-
-  for(;;)
-  {
-    if (digitalRead(2) == HIGH)
-    {
-      xTaskCreate(Task1,"task1",128,NULL,1,NULL);
-    }else
-    {
-      xTaskCreate(Task2,"task2",128,NULL,1,NULL);
-    };
-    
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
+    while (true) {
+      delay(1);
+    }
   }
+  if (Ethernet.linkStatus() == LinkOFF) 
+    Serial.println("Ethernet cable is not connected.");
+
+  setupThermometer();
+
+  // start the server
+  server.begin();
+  Serial.print("server is at ");
+  Serial.println(Ethernet.localIP());
+  xTaskCreate(WaitforClient,"WaitforClient",1024,NULL,1,NULL);
+  vTaskStartScheduler();
+  
+}
+
+void loop() {
+}
+
+void WaitforClient(void *pvParameters){
+  while(1)
+  {
+  EthernetClient client = server.available();
+  
+  if (client) 
+    handleClientRequest(client);
+  };
 
 }
